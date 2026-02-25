@@ -151,7 +151,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: "system"
 };
 
-const WINDOW_STATE_KEY = "creator-file-manager.window-state.v1";
+const WINDOW_STATE_KEY = "creators-file-manager.window-state.v1";
 
 type WindowState = {
   x: number;
@@ -1076,7 +1076,7 @@ export function App() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <img className="sidebar-brand-icon" src="/app-icon.png" alt="CF" />
-          <span className="sidebar-brand-text">Creator's File Manager</span>
+          <span className="sidebar-brand-text">Creators File Manager</span>
         </div>
         <nav className="sidebar-nav">
           {NAV_ITEMS.filter((item) => item.key !== "settings" && item.key !== "about").map((item) => (
@@ -2614,7 +2614,7 @@ export function App() {
         {tab === "about" ? (
           <>
             <div className="card">
-              <h3 className="card-title">Creator's File Manager</h3>
+              <h3 className="card-title">Creators File Manager</h3>
               <p>バージョン: 0.1.0</p>
               <p>映像・写真クリエイター向けのファイル操作ユーティリティです。</p>
             </div>

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Creator's File Manager",
+  "productName": "Creators File Manager",
   "version": "0.1.0",
-  "identifier": "com.local.creator-file-manager",
+  "identifier": "com.local.creators-file-manager",
   "build": {
     "beforeDevCommand": "npm run build-worker && npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Creator's File Manager",
+        "title": "Creators File Manager",
         "width": 1280,
         "height": 720,
         "minWidth": 1280,

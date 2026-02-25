@@ -1,4 +1,4 @@
-# Creator's File Manager — エージェント向けプロジェクトガイド
+# Creators File Manager — エージェント向けプロジェクトガイド
 
 ## 1. プロジェクト概要
 
@@ -136,8 +136,8 @@ npx tauri build
 | 成果物 | パス |
 |---|---|
 | 実行ファイル | `src-tauri/target/release/file-manager.exe` |
-| MSI | `src-tauri/target/release/bundle/msi/Creator's File Manager_*.msi` |
-| NSIS | `src-tauri/target/release/bundle/nsis/Creator's File Manager_*-setup.exe` |
+| MSI | `src-tauri/target/release/bundle/msi/Creators File Manager_*.msi` |
+| NSIS | `src-tauri/target/release/bundle/nsis/Creators File Manager_*-setup.exe` |
 
 ## 6. データフロー
 

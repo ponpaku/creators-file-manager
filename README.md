@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="public/CF.png" width="96" alt="Creator's File Manager icon">
+  <img src="public/CF.png" width="96" alt="Creators File Manager icon">
 </p>
 
-<h1 align="center">Creator's File Manager</h1>
+<h1 align="center">Creators File Manager</h1>
 
 <p align="center">
   映像・写真クリエイター向けの、ファイル一括処理デスクトップアプリ
@@ -19,7 +19,7 @@
 
 ## 概要
 
-**Creator's File Manager** は、映像・写真制作者が日常的に行うファイル操作を高速・一括処理するための Windows デスクトップアプリです。
+**Creators File Manager** は、映像・写真制作者が日常的に行うファイル操作を高速・一括処理するための Windows デスクトップアプリです。
 
 フォルダやファイルをドラッグ＆ドロップするだけで、面倒な大量ファイルの処理を一瞬でこなせます。
 
@@ -122,8 +122,8 @@ JPEG ファイルから EXIF 等のメタデータを一括で除去します。
 
 | ファイル | 説明 |
 |---|---|
-| `Creator's File Manager_*-setup.exe` | NSIS インストーラー（推奨） |
-| `Creator's File Manager_*.msi` | MSI インストーラー |
+| `Creators File Manager_*-setup.exe` | NSIS インストーラー（推奨） |
+| `Creators File Manager_*.msi` | MSI インストーラー |
 
 インストーラーを実行してウィザードに従うだけで使用できます。
 
@@ -147,7 +147,7 @@ JPEG ファイルから EXIF 等のメタデータを一括で除去します。
 アプリの設定（削除パターン・テンプレート等）は以下に保存されます：
 
 ```
-%APPDATA%\com.local.creator-file-manager\
+%APPDATA%\com.local.creators-file-manager\
 ```
 
 設定のインポート / エクスポートは「設定」ページから行えます。
