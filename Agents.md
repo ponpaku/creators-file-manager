@@ -3,7 +3,7 @@
 ## 1. プロジェクト概要
 
 クリエイター（映像・写真制作者）向けのデスクトップファイル操作ユーティリティ。
-4 つの一括処理機能を提供する Windows ネイティブアプリケーション。
+6 つの一括処理機能を提供する Windows ネイティブアプリケーション。
 
 | 機能 | 概要 |
 |---|---|
@@ -11,6 +11,8 @@
 | 拡張子一括削除 | 指定拡張子のファイルを直接削除 / ゴミ箱移動 / 退避フォルダ移動 |
 | JPEG 一括圧縮 | リサイズ比率・品質指定、目標サイズ自動計算 |
 | フォルダ展開 | 再帰的にファイルをフラットにコピー |
+| EXIF 日時オフセット | JPEG の撮影日時を指定時間分だけ一括でずらす |
+| メタデータ削除 | JPEG から EXIF 等のメタデータを一括除去 |
 
 初期計画は `plan.md` を参照。
 
@@ -48,6 +50,8 @@ file-manager/
 │   │   ├── delete.rs             # 削除ロジック
 │   │   ├── compress.rs           # JPEG 圧縮ロジック
 │   │   ├── flatten.rs            # フォルダ展開ロジック
+│   │   ├── exif_offset.rs        # EXIF 日時オフセットロジック
+│   │   ├── metadata_strip.rs     # メタデータ削除ロジック
 │   │   ├── file_collect.rs       # ファイル収集・拡張子フィルタ
 │   │   ├── fs_atomic.rs          # 原子的ファイル操作
 │   │   ├── path_norm.rs          # パス正規化
@@ -83,6 +87,8 @@ App.tsx → api.ts (invoke) → lib.rs (コマンドハンドラ) → 各モジ�
 | `delete.rs` | 拡張子マッチ、3 モード削除 (direct / trash / retreat) |
 | `compress.rs` | JPEG リサイズ・品質調整、目標サイズ逆算 |
 | `flatten.rs` | 再帰走査→フラットコピー、衝突検出 |
+| `exif_offset.rs` | EXIF 日時タグの読取・オフセット計算・書換 |
+| `metadata_strip.rs` | JPEG バイト列からメタデータセグメントを除去 |
 | `file_collect.rs` | walkdir ベースのファイル収集、拡張子フィルタ |
 | `fs_atomic.rs` | 一時ファイル経由の原子的書換 (`ReplaceFileW` 優先) |
 | `path_norm.rs` | ドライブ文字 / UNC 正規化、相対パス算出 |
@@ -199,7 +205,7 @@ npx tauri build
 画像: `.jpg .jpeg .png .webp .gif .tif .tiff .bmp .heic .heif .dng .cr2 .cr3 .nef .arw .raf`
 動画: `.mp4 .mov .m4v .avi .mkv .wmv .mts .m2ts .mpg .mpeg .webm`
 
-### 圧縮対象
+### 圧縮対象 / EXIF 日時オフセット対象 / メタデータ削除対象
 
 `.jpg .jpeg` のみ
 
