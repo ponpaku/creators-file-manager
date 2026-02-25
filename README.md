@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="public/CF.png" width="96" alt="Creator File Manager icon">
+  <img src="public/CF.png" width="96" alt="Creator's File Manager icon">
 </p>
 
-<h1 align="center">Creator File Manager</h1>
+<h1 align="center">Creator's File Manager</h1>
 
 <p align="center">
   映像・写真クリエイター向けの、ファイル一括処理デスクトップアプリ
@@ -19,7 +19,7 @@
 
 ## 概要
 
-**Creator File Manager** は、映像・写真制作者が日常的に行うファイル操作を高速・一括処理するための Windows デスクトップアプリです。
+**Creator's File Manager** は、映像・写真制作者が日常的に行うファイル操作を高速・一括処理するための Windows デスクトップアプリです。
 
 フォルダやファイルをドラッグ＆ドロップするだけで、面倒な大量ファイルの処理を一瞬でこなせます。
 
@@ -122,8 +122,8 @@ JPEG ファイルから EXIF 等のメタデータを一括で除去します。
 
 | ファイル | 説明 |
 |---|---|
-| `Creator File Manager_*-setup.exe` | NSIS インストーラー（推奨） |
-| `Creator File Manager_*.msi` | MSI インストーラー |
+| `Creator's File Manager_*-setup.exe` | NSIS インストーラー（推奨） |
+| `Creator's File Manager_*.msi` | MSI インストーラー |
 
 インストーラーを実行してウィザードに従うだけで使用できます。
 
