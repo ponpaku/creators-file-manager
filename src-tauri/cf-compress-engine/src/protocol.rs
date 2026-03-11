@@ -27,6 +27,17 @@ pub enum Request {
         quality: u8,
         preserve_exif: bool,
     },
+    ResizeBatch {
+        id: String,
+        items: Vec<ResizeBatchItem>,
+        mode: String,
+        size_px: u32,
+        small_image_policy: String,
+        filter: String,
+        sharpen: f32,
+        quality: u8,
+        preserve_exif: bool,
+    },
     Cancel {
         id: String,
     },
@@ -42,12 +53,20 @@ pub struct CompressBatchItem {
     pub skip: bool,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ResizeBatchItem {
+    pub source: String,
+    pub destination: String,
+    pub skip: bool,
+}
+
 impl Request {
     pub fn id(&self) -> &str {
         match self {
             Request::SampleEstimate { id, .. } => id,
             Request::SuggestParams { id, .. } => id,
             Request::CompressBatch { id, .. } => id,
+            Request::ResizeBatch { id, .. } => id,
             Request::Cancel { id, .. } => id,
             Request::Shutdown { id, .. } => id,
         }
@@ -82,6 +101,20 @@ pub enum Response {
         reason: Option<String>,
     },
     CompressBatchDone {
+        id: String,
+        succeeded: usize,
+        failed: usize,
+        skipped: usize,
+    },
+    ResizeFileDone {
+        id: String,
+        source: String,
+        destination: String,
+        status: String,
+        output_size: Option<u64>,
+        reason: Option<String>,
+    },
+    ResizeBatchDone {
         id: String,
         succeeded: usize,
         failed: usize,

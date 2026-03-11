@@ -33,6 +33,17 @@ pub enum WorkerRequest {
         quality: u8,
         preserve_exif: bool,
     },
+    ResizeBatch {
+        id: String,
+        items: Vec<ResizeBatchItemMsg>,
+        mode: String,
+        size_px: u32,
+        small_image_policy: String,
+        filter: String,
+        sharpen: f32,
+        quality: u8,
+        preserve_exif: bool,
+    },
     Cancel {
         id: String,
     },
@@ -43,6 +54,13 @@ pub enum WorkerRequest {
 
 #[derive(Debug, Serialize)]
 pub struct CompressBatchItemMsg {
+    pub source: String,
+    pub destination: String,
+    pub skip: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ResizeBatchItemMsg {
     pub source: String,
     pub destination: String,
     pub skip: bool,
@@ -79,6 +97,20 @@ pub enum WorkerResponse {
         failed: usize,
         skipped: usize,
     },
+    ResizeFileDone {
+        id: String,
+        source: String,
+        destination: String,
+        status: String,
+        output_size: Option<u64>,
+        reason: Option<String>,
+    },
+    ResizeBatchDone {
+        id: String,
+        succeeded: usize,
+        failed: usize,
+        skipped: usize,
+    },
     Error {
         id: String,
         message: String,
@@ -93,6 +125,8 @@ impl WorkerResponse {
             WorkerResponse::SuggestParamsResult { id, .. } => id,
             WorkerResponse::CompressFileDone { id, .. } => id,
             WorkerResponse::CompressBatchDone { id, .. } => id,
+            WorkerResponse::ResizeFileDone { id, .. } => id,
+            WorkerResponse::ResizeBatchDone { id, .. } => id,
             WorkerResponse::Error { id, .. } => id,
         }
     }
@@ -103,6 +137,7 @@ impl WorkerResponse {
             WorkerResponse::SampleEstimateResult { .. }
                 | WorkerResponse::SuggestParamsResult { .. }
                 | WorkerResponse::CompressBatchDone { .. }
+                | WorkerResponse::ResizeBatchDone { .. }
                 | WorkerResponse::Error { .. }
         )
     }
@@ -211,6 +246,7 @@ fn request_id(req: &WorkerRequest) -> &str {
         WorkerRequest::SampleEstimate { id, .. } => id,
         WorkerRequest::SuggestParams { id, .. } => id,
         WorkerRequest::CompressBatch { id, .. } => id,
+        WorkerRequest::ResizeBatch { id, .. } => id,
         WorkerRequest::Cancel { id, .. } => id,
         WorkerRequest::Shutdown { id, .. } => id,
     }
@@ -375,6 +411,83 @@ pub fn compress_batch(
                 });
             }
             Ok(WorkerResponse::CompressBatchDone {
+                succeeded,
+                failed,
+                skipped,
+                ..
+            }) => {
+                return Ok(BatchResult {
+                    succeeded,
+                    failed,
+                    skipped,
+                });
+            }
+            Ok(WorkerResponse::Error { message, .. }) => {
+                return Err(message);
+            }
+            Ok(_) => {}
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                let mut guard = BRIDGE.lock().map_err(|e| e.to_string())?;
+                *guard = None;
+                return Err("ワーカープロセスが予期せず終了しました".to_string());
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn resize_batch(
+    app: &AppHandle,
+    items: Vec<ResizeBatchItemMsg>,
+    mode: String,
+    size_px: u32,
+    small_image_policy: String,
+    filter: String,
+    sharpen: f32,
+    quality: u8,
+    preserve_exif: bool,
+    is_cancelled: impl Fn() -> bool,
+    on_file_done: impl FnMut(BatchProgress),
+) -> Result<BatchResult, String> {
+    ensure_worker(app)?;
+    let id = next_id()?;
+    let rx = send_request(&WorkerRequest::ResizeBatch {
+        id: id.clone(),
+        items,
+        mode,
+        size_px,
+        small_image_policy,
+        filter,
+        sharpen,
+        quality,
+        preserve_exif,
+    })?;
+
+    let mut on_file_done = on_file_done;
+
+    loop {
+        if is_cancelled() {
+            let _ = send_request(&WorkerRequest::Cancel { id: id.clone() });
+        }
+        match rx.recv_timeout(std::time::Duration::from_millis(100)) {
+            Ok(WorkerResponse::ResizeFileDone {
+                source,
+                destination,
+                status,
+                output_size,
+                reason,
+                ..
+            }) => {
+                on_file_done(BatchProgress {
+                    source,
+                    destination,
+                    status,
+                    output_size,
+                    reason,
+                });
+            }
+            Ok(WorkerResponse::ResizeBatchDone {
                 succeeded,
                 failed,
                 skipped,

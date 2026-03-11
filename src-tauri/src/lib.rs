@@ -9,6 +9,7 @@ mod metadata_strip;
 mod model;
 mod path_norm;
 mod rename;
+mod resize;
 mod settings;
 mod worker_bridge;
 
@@ -20,7 +21,8 @@ use crate::model::{
     ExifOffsetPreviewResponse, FlattenExecuteResponse, FlattenPreviewRequest,
     FlattenPreviewResponse, ImportConflictPreview, MetadataStripExecuteResponse,
     MetadataStripPreviewRequest, MetadataStripPreviewResponse, RenameExecuteResponse,
-    RenamePreviewRequest, RenamePreviewResponse, RenameTemplateTag,
+    RenamePreviewRequest, RenamePreviewResponse, RenameTemplateTag, ResizeCollectInfoResponse,
+    ResizeExecuteResponse, ResizePreviewRequest, ResizePreviewResponse,
 };
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -214,6 +216,46 @@ fn execute_metadata_strip(
 }
 
 #[tauri::command]
+fn resize_collect_info(
+    input_paths: Vec<String>,
+    include_subfolders: bool,
+) -> Result<ResizeCollectInfoResponse, String> {
+    resize::collect_info(&input_paths, include_subfolders).map_err(error_to_string)
+}
+
+#[tauri::command]
+async fn preview_resize(
+    request: ResizePreviewRequest,
+) -> Result<ResizePreviewResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        resize::preview(&request).map_err(error_to_string)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn execute_resize(
+    app: AppHandle,
+    request: ResizePreviewRequest,
+) -> Result<ResizeExecuteResponse, String> {
+    CANCEL_REQUESTED.store(false, Ordering::SeqCst);
+    tauri::async_runtime::spawn_blocking(move || {
+        resize::execute(
+            &app,
+            &request,
+            || CANCEL_REQUESTED.load(Ordering::SeqCst),
+            |event| {
+                let _ = app.emit("operation-progress", event);
+            },
+        )
+        .map_err(error_to_string)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 fn cancel_operation() {
     CANCEL_REQUESTED.store(true, Ordering::SeqCst);
 }
@@ -303,6 +345,9 @@ pub fn run() {
             execute_exif_offset,
             preview_metadata_strip,
             execute_metadata_strip,
+            resize_collect_info,
+            preview_resize,
+            execute_resize,
             cancel_operation,
             is_ffprobe_available,
             list_rename_template_tags,

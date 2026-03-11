@@ -260,6 +260,24 @@ body {
   background: var(--accent);
 }
 
+.sidebar-nav .nav-item {
+  user-select: none;
+}
+
+.sidebar-nav .nav-item.dragging,
+.sidebar-nav .nav-item:active {
+  cursor: grabbing;
+}
+
+.nav-item.dragging {
+  opacity: 0.4;
+}
+
+.nav-item.drag-over-nav {
+  border-top: 2px solid var(--accent);
+  margin-top: -2px;
+}
+
 .nav-icon {
   width: 18px;
   height: 18px;
@@ -645,6 +663,36 @@ select {
 .btn-sm {
   padding: 4px 10px;
   font-size: 12px;
+}
+
+/* ===== Button Group ===== */
+.btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ===== Radio Group ===== */
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.radio-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.radio-row input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 /* ===== Metadata Strip =====*/

@@ -13,6 +13,7 @@ import {
   executeFlatten,
   executeMetadataStrip,
   executeRename,
+  executeResize,
   exportSettings,
   getSettingsPath,
   importSettings,
@@ -28,6 +29,7 @@ import {
   previewImportConflicts,
   previewMetadataStrip,
   previewRename,
+  previewResize,
   saveSettings
 } from "./api";
 import type {
@@ -53,10 +55,12 @@ import type {
   RenameExecuteResponse,
   RenamePreviewResponse,
   RenameSource,
-  RenameTemplateTag
+  RenameTemplateTag,
+  ResizeExecuteResponse,
+  ResizePreviewResponse
 } from "./types";
 
-type TabKey = "rename" | "delete" | "compress" | "flatten" | "exif-offset" | "metadata-strip" | "settings" | "about";
+type TabKey = "rename" | "delete" | "compress" | "resize" | "flatten" | "exif-offset" | "metadata-strip" | "settings" | "about";
 
 type Toast = {
   id: number;
@@ -68,12 +72,34 @@ const NAV_ITEMS: { key: TabKey; label: string; desc: string }[] = [
   { key: "rename", label: "一括リネーム", desc: "動画・画像ファイルを撮影日時やテンプレートで一括リネーム" },
   { key: "delete", label: "拡張子一括削除", desc: "指定した拡張子のファイルを一括で削除・退避" },
   { key: "compress", label: "JPEG一括圧縮", desc: "JPEGファイルのリサイズ・品質調整を一括で実行" },
+  { key: "resize", label: "一括リサイズ", desc: "JPEG・PNG・WebP画像をpx指定で一括リサイズ" },
   { key: "exif-offset", label: "EXIF日時補正", desc: "JPEGのEXIF撮影日時をオフセット補正" },
   { key: "metadata-strip", label: "メタデータ削除", desc: "JPEGのEXIFから指定情報を削除" },
   { key: "flatten", label: "フォルダ展開", desc: "フォルダ構造を展開し、すべてのファイルをフラットにコピー" },
   { key: "settings", label: "設定", desc: "アプリケーションの設定を管理" },
   { key: "about", label: "このアプリについて", desc: "アプリケーション情報" }
 ];
+
+const DRAGGABLE_KEYS: TabKey[] = NAV_ITEMS
+  .filter((item) => item.key !== "settings" && item.key !== "about")
+  .map((item) => item.key);
+
+const loadNavOrder = (): TabKey[] => {
+  try {
+    const stored = localStorage.getItem("nav-order");
+    if (!stored) return DRAGGABLE_KEYS;
+    const parsed = JSON.parse(stored) as TabKey[];
+    // Ensure all draggable keys are present (handle newly added tabs)
+    const known = new Set(parsed.filter((k) => DRAGGABLE_KEYS.includes(k)));
+    const ordered = parsed.filter((k) => known.has(k));
+    for (const k of DRAGGABLE_KEYS) {
+      if (!known.has(k)) ordered.push(k);
+    }
+    return ordered;
+  } catch {
+    return DRAGGABLE_KEYS;
+  }
+};
 
 const NavIcon = ({ tabKey }: { tabKey: TabKey }) => {
   switch (tabKey) {
@@ -97,6 +123,15 @@ const NavIcon = ({ tabKey }: { tabKey: TabKey }) => {
           <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
           <circle cx="8.5" cy="8.5" r="1.5" />
           <polyline points="21 15 16 10 5 21" />
+        </svg>
+      );
+    case "resize":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 3 21 3 21 9" />
+          <polyline points="9 21 3 21 3 15" />
+          <line x1="21" y1="3" x2="14" y2="10" />
+          <line x1="3" y1="21" x2="10" y2="14" />
         </svg>
       );
     case "flatten":
@@ -192,6 +227,8 @@ const tabToOperation = (tabKey: string): string => {
   return tabKey;
 };
 
+const resizeSizePxPresets = [1920, 1280, 1024, 640, 400] as const;
+
 const operationLabel = (value: OperationProgressEvent["operation"]): string => {
   switch (value) {
     case "rename":
@@ -200,6 +237,8 @@ const operationLabel = (value: OperationProgressEvent["operation"]): string => {
       return "削除";
     case "compress":
       return "圧縮";
+    case "resize":
+      return "リサイズ";
     case "flatten":
       return "展開";
     case "exifOffset":
@@ -330,6 +369,58 @@ export function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastIdRef = useRef(0);
 
+  const [navOrder, setNavOrder] = useState<TabKey[]>(loadNavOrder);
+  const dragItem = useRef<number | null>(null);
+  const dragOverItem = useRef<number | null>(null);
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  const sortedNavItems = useMemo(
+    () => navOrder.map((key) => NAV_ITEMS.find((item) => item.key === key)!),
+    [navOrder]
+  );
+
+  const handleNavPointerDown = useCallback((idx: number) => (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    dragItem.current = idx;
+    setDraggingIdx(idx);
+
+    const onMove = (ev: PointerEvent) => {
+      const target = document.elementFromPoint(ev.clientX, ev.clientY);
+      const item = target?.closest<HTMLElement>("[data-nav-idx]");
+      if (item) {
+        const oi = Number(item.dataset.navIdx);
+        if (!isNaN(oi) && oi !== dragOverItem.current) {
+          dragOverItem.current = oi;
+          setDragOverIdx(oi);
+        }
+      }
+    };
+
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      const from = dragItem.current;
+      const to = dragOverItem.current;
+      dragItem.current = null;
+      dragOverItem.current = null;
+      setDraggingIdx(null);
+      setDragOverIdx(null);
+      if (from === null || to === null || from === to) return;
+      setNavOrder((prev) => {
+        const next = [...prev];
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        localStorage.setItem("nav-order", JSON.stringify(next));
+        return next;
+      });
+    };
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  }, []);
+
   const [renamePaths, setRenamePaths] = useState("");
   const [renameSubfolders, setRenameSubfolders] = useState(false);
   const [renameTemplate, setRenameTemplate] = useState(DEFAULT_SETTINGS.renameTemplates[0].template);
@@ -348,7 +439,7 @@ export function App() {
 
   const [deletePaths, setDeletePaths] = useState("");
   const [deleteSubfolders, setDeleteSubfolders] = useState(false);
-  const [deleteExtensions, setDeleteExtensions] = useState("jpg");
+  const [deleteExtensions, setDeleteExtensions] = useState("");
   const [deleteMode, setDeleteMode] = useState<DeletePattern["mode"]>("trash");
   const [deleteRetreatDir, setDeleteRetreatDir] = useState("");
   const [deleteConflictPolicy, setDeleteConflictPolicy] = useState<"overwrite" | "sequence" | "skip">("sequence");
@@ -400,6 +491,21 @@ export function App() {
   const [metadataStripPreview, setMetadataStripPreview] = useState<MetadataStripPreviewResponse | null>(null);
   const [metadataStripExec, setMetadataStripExec] = useState<MetadataStripExecuteResponse | null>(null);
 
+  const [resizePaths, setResizePaths] = useState("");
+  const [resizeSubfolders, setResizeSubfolders] = useState(false);
+  const [resizeSizePx, setResizeSizePx] = useState<number | "custom">(1920);
+  const [resizeCustomPx, setResizeCustomPx] = useState("");
+  const [resizeMode, setResizeMode] = useState<"long_side" | "short_side">("long_side");
+  const [resizeSmallPolicy, setResizeSmallPolicy] = useState<"skip" | "copy" | "upscale">("skip");
+  const [resizeFilter, setResizeFilter] = useState<"lanczos3" | "catmull_rom" | "triangle" | "nearest">("lanczos3");
+  const [resizeSharpen, setResizeSharpen] = useState(0);
+  const [resizeQuality, setResizeQuality] = useState(90);
+  const [resizePreserveExif, setResizePreserveExif] = useState(true);
+  const [resizeOutputDir, setResizeOutputDir] = useState("");
+  const [resizeConflictPolicy, setResizeConflictPolicy] = useState<"overwrite" | "sequence" | "skip">("sequence");
+  const [resizePreview, setResizePreview] = useState<ResizePreviewResponse | null>(null);
+  const [resizeExec, setResizeExec] = useState<ResizeExecuteResponse | null>(null);
+
   const [exportPath, setExportPath] = useState("");
   const [importPath, setImportPath] = useState("");
   const [importMode, setImportMode] = useState<"overwrite" | "merge">("merge");
@@ -420,6 +526,14 @@ export function App() {
   const compressFiles = useMemo(() => parsePaths(compressPaths), [compressPaths]);
   const exifOffsetFiles = useMemo(() => parsePaths(exifOffsetPaths), [exifOffsetPaths]);
   const metadataStripFiles = useMemo(() => parsePaths(metadataStripPaths), [metadataStripPaths]);
+  const resizeFiles = useMemo(() => parsePaths(resizePaths), [resizePaths]);
+  const effectiveResizePx = useMemo(() => {
+    if (resizeSizePx === "custom") {
+      const parsed = Number.parseInt(resizeCustomPx.trim(), 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    }
+    return resizeSizePx;
+  }, [resizeSizePx, resizeCustomPx]);
   const totalOffsetSeconds = useMemo(() => {
     const abs = exifOffsetDays * 86400 + exifOffsetHours * 3600 + exifOffsetMinutes * 60 + exifOffsetSeconds;
     return exifOffsetSign === "+" ? abs : -abs;
@@ -880,6 +994,10 @@ export function App() {
         setCompressPaths((current) => mergePathText(current, paths));
         addToast("info", `${paths.length}件のパスを追加しました`);
         break;
+      case "resize":
+        setResizePaths((current) => mergePathText(current, paths));
+        addToast("info", `${paths.length}件のパスを追加しました`);
+        break;
       case "flatten": {
         for (const path of paths) {
           if (await isDirectoryPath(path)) {
@@ -1063,6 +1181,26 @@ export function App() {
           })
         );
         break;
+      case "resize": {
+        if (!resizeFiles.length || effectiveResizePx <= 0) return;
+        setResizeExec(null);
+        setResizePreview(
+          await previewResize({
+            inputPaths: resizeFiles,
+            includeSubfolders: resizeSubfolders,
+            sizePx: effectiveResizePx,
+            mode: resizeMode,
+            smallImagePolicy: resizeSmallPolicy,
+            filter: resizeFilter,
+            sharpen: resizeSharpen,
+            quality: resizeQuality,
+            preserveExif: resizePreserveExif,
+            outputDir: resizeOutputDir.trim() || null,
+            conflictPolicy: resizeConflictPolicy
+          })
+        );
+        break;
+      }
       default:
         break;
     }
@@ -1079,16 +1217,20 @@ export function App() {
           <span className="sidebar-brand-text">Creators File Manager</span>
         </div>
         <nav className="sidebar-nav">
-          {NAV_ITEMS.filter((item) => item.key !== "settings" && item.key !== "about").map((item) => (
-            <button
+          {sortedNavItems.map((item, idx) => (
+            <div
               key={item.key}
-              className={`nav-item${tab === item.key ? " active" : ""}`}
+              role="button"
+              tabIndex={0}
+              data-nav-idx={idx}
+              className={`nav-item${tab === item.key ? " active" : ""}${draggingIdx === idx ? " dragging" : ""}${dragOverIdx === idx ? " drag-over-nav" : ""}`}
               onClick={() => setTab(item.key)}
-              type="button"
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setTab(item.key); }}
+              onPointerDown={handleNavPointerDown(idx)}
             >
               <span className="nav-icon"><NavIcon tabKey={item.key} /></span>
               <span>{item.label}</span>
-            </button>
+            </div>
           ))}
         </nav>
         <nav className="sidebar-nav-bottom">
@@ -1983,6 +2125,295 @@ export function App() {
           </>
         ) : null}
 
+        {/* ===== Resize Tab ===== */}
+        {tab === "resize" ? (
+          <>
+            <div className="input-row">
+              {/* Drop Zone */}
+              <div className={`drop-zone${isDragOver ? " drag-over" : ""}`}>
+                <div className="drop-zone-icon"><DropIcon /></div>
+                <div className="drop-zone-text">JPEG・PNG・WebPファイルまたはフォルダをここにドロップ</div>
+                <div className="drop-zone-actions">
+                  <button className="btn" type="button" onClick={() => void openFilesDialog()} disabled={isBusy}>ファイル選択</button>
+                  <button className="btn" type="button" onClick={() => void openFolderDialog()} disabled={isBusy}>フォルダ選択</button>
+                </div>
+              </div>
+
+              {/* Input Paths */}
+              <div className="card">
+                <div className="form-group">
+                  <label className="form-label">入力パス {resizeFiles.length > 0 ? <span className="text-muted">({resizeFiles.length}件)</span> : null}</label>
+                  <textarea className="paths-area" rows={3} value={resizePaths} onChange={(event) => setResizePaths(event.target.value)} placeholder="パスを入力（改行またはカンマ区切り）" />
+                </div>
+              </div>
+            </div>
+
+            {/* Resize Settings */}
+            <form
+              onSubmit={(event: FormEvent) => {
+                event.preventDefault();
+                void run(async () => {
+                  if (!resizeFiles.length) throw new Error("入力パスを指定してください。");
+                  if (effectiveResizePx <= 0) throw new Error("有効なサイズ（px）を入力してください。");
+                  setResizeExec(null);
+                  const preview = await previewResize({
+                    inputPaths: resizeFiles,
+                    includeSubfolders: resizeSubfolders,
+                    sizePx: effectiveResizePx,
+                    mode: resizeMode,
+                    smallImagePolicy: resizeSmallPolicy,
+                    filter: resizeFilter,
+                    sharpen: resizeSharpen,
+                    quality: resizeQuality,
+                    preserveExif: resizePreserveExif,
+                    outputDir: resizeOutputDir.trim() || null,
+                    conflictPolicy: resizeConflictPolicy
+                  });
+                  setResizePreview(preview);
+                  addToast("success", `プレビュー完了: ${preview.ready}/${preview.total}件`);
+                }, "プレビュー中...");
+              }}
+            >
+              <div className="card">
+                <h3 className="card-title">リサイズ設定</h3>
+
+                <div className="form-group">
+                  <label className="form-label">目標サイズ (px)</label>
+                  <div className="btn-group">
+                    {resizeSizePxPresets.map((px) => (
+                      <button
+                        key={px}
+                        type="button"
+                        className={`btn btn-sm${resizeSizePx === px ? " btn-primary" : ""}`}
+                        onClick={() => setResizeSizePx(px)}
+                      >
+                        {px}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className={`btn btn-sm${resizeSizePx === "custom" ? " btn-primary" : ""}`}
+                      onClick={() => setResizeSizePx("custom")}
+                    >
+                      カスタム
+                    </button>
+                  </div>
+                  {resizeSizePx === "custom" ? (
+                    <input
+                      type="number"
+                      min={1}
+                      value={resizeCustomPx}
+                      onChange={(event) => setResizeCustomPx(event.target.value)}
+                      placeholder="px を入力"
+                      style={{ marginTop: 6, width: 120 }}
+                    />
+                  ) : null}
+                  <span className="form-hint">長辺または短辺がこの値になるようリサイズします</span>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">基準辺</label>
+                    <div className="radio-group">
+                      <label className="radio-row">
+                        <input type="radio" name="resizeMode" value="long_side" checked={resizeMode === "long_side"} onChange={() => setResizeMode("long_side")} />
+                        長辺
+                      </label>
+                      <label className="radio-row">
+                        <input type="radio" name="resizeMode" value="short_side" checked={resizeMode === "short_side"} onChange={() => setResizeMode("short_side")} />
+                        短辺
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">小さい画像の処理</label>
+                    <div className="radio-group">
+                      <label className="radio-row">
+                        <input type="radio" name="resizeSmallPolicy" value="skip" checked={resizeSmallPolicy === "skip"} onChange={() => setResizeSmallPolicy("skip")} />
+                        スキップ
+                      </label>
+                      <label className="radio-row">
+                        <input type="radio" name="resizeSmallPolicy" value="copy" checked={resizeSmallPolicy === "copy"} onChange={() => setResizeSmallPolicy("copy")} />
+                        コピーのみ
+                      </label>
+                      <label className="radio-row">
+                        <input type="radio" name="resizeSmallPolicy" value="upscale" checked={resizeSmallPolicy === "upscale"} onChange={() => setResizeSmallPolicy("upscale")} />
+                        拡大して処理
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">補間方式</label>
+                    <select value={resizeFilter} onChange={(event) => setResizeFilter(event.target.value as typeof resizeFilter)}>
+                      <option value="lanczos3">Lanczos3 (高品質)</option>
+                      <option value="catmull_rom">Bicubic</option>
+                      <option value="triangle">Bilinear</option>
+                      <option value="nearest">最近傍</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">シャープ (0–5)</label>
+                    <div className="range-control">
+                      <input
+                        className="range-slider"
+                        type="range"
+                        min={0}
+                        max={5}
+                        step={0.1}
+                        value={resizeSharpen}
+                        onChange={(event) => setResizeSharpen(parseFloat(event.target.value))}
+                      />
+                      <span className="range-value">{resizeSharpen.toFixed(1)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">JPEG/WebP 品質 (1-100)</label>
+                    <div className="range-control">
+                      <input
+                        className="range-slider"
+                        type="range"
+                        min={1}
+                        max={100}
+                        value={resizeQuality}
+                        onChange={(event) => setResizeQuality(Math.max(1, Math.min(100, Number.parseInt(event.target.value, 10) || 1)))}
+                      />
+                      <span className="range-value">{resizeQuality}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">出力先フォルダ</label>
+                  <input value={resizeOutputDir} onChange={(event) => setResizeOutputDir(event.target.value)} placeholder="空欄で自動作成（入力元と同階層）" />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">競合時の処理</label>
+                  <select value={resizeConflictPolicy} onChange={(event) => setResizeConflictPolicy(event.target.value as "overwrite" | "sequence" | "skip")}>
+                    <option value="overwrite">上書き</option>
+                    <option value="sequence">連番付与</option>
+                    <option value="skip">スキップ</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="checkbox-row">
+                    <input type="checkbox" checked={resizeSubfolders} onChange={(event) => setResizeSubfolders(event.target.checked)} />
+                    サブフォルダを含める
+                  </label>
+                  <label className="checkbox-row">
+                    <input type="checkbox" checked={resizePreserveExif} onChange={(event) => setResizePreserveExif(event.target.checked)} />
+                    EXIFを保持（JPEGのみ）
+                  </label>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="page-actions">
+                <button className={`btn${busyLabel === "プレビュー中..." ? " btn-loading" : ""}`} disabled={isBusy}>
+                  {busyLabel === "プレビュー中..." ? "プレビュー中..." : "プレビュー"}
+                </button>
+                <button
+                  className={`btn btn-primary${busyLabel === "実行中..." ? " btn-loading" : ""}`}
+                  type="button"
+                  disabled={isBusy || !resizeFiles.length}
+                  onClick={() =>
+                    void run(async () => {
+                      if (!resizeFiles.length) throw new Error("入力パスを指定してください。");
+                      if (effectiveResizePx <= 0) throw new Error("有効なサイズ（px）を入力してください。");
+                      setProgressMap((prev) => { const next = { ...prev }; delete next.resize; return next; });
+                      const result = await executeResize({
+                        inputPaths: resizeFiles,
+                        includeSubfolders: resizeSubfolders,
+                        sizePx: effectiveResizePx,
+                        mode: resizeMode,
+                        smallImagePolicy: resizeSmallPolicy,
+                        filter: resizeFilter,
+                        sharpen: resizeSharpen,
+                        quality: resizeQuality,
+                        preserveExif: resizePreserveExif,
+                        outputDir: resizeOutputDir.trim() || null,
+                        conflictPolicy: resizeConflictPolicy
+                      });
+                      setResizeExec(result);
+                      addToast("success", `リサイズ完了: 成功${result.succeeded}件${result.failed > 0 ? ` / 失敗${result.failed}件` : ""}`);
+                    }, "実行中...")
+                  }
+                >
+                  {busyLabel === "実行中..." ? "実行中..." : "実行"}
+                </button>
+                {(resizePreview || resizeExec) ? (
+                  <button className="btn" type="button" disabled={isBusy} onClick={() => { setResizePaths(""); setResizePreview(null); setResizeExec(null); setProgressMap((prev) => { const next = { ...prev }; delete next.resize; return next; }); }}>クリア</button>
+                ) : null}
+              </div>
+            </form>
+
+            {/* Preview Results */}
+            {resizePreview ? (
+              <div className="result-section">
+                {countConflictWarnings(resizePreview.items.map((item) => item.reason)) > 0 ? (
+                  <div className="conflict-warning">
+                    出力先で同名競合が検出されました。競合時の処理を確認して実行してください。
+                  </div>
+                ) : null}
+                <div className="result-summary">
+                  <span className="result-summary-label">プレビュー</span>
+                  <span className="badge badge-info">{resizePreview.ready}/{resizePreview.total} 件</span>
+                </div>
+                <div className="table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 72 }}>状態</th>
+                        <th>入力</th>
+                        <th>出力</th>
+                        <th style={{ width: 90 }}>元サイズ</th>
+                        <th style={{ width: 130 }}>元寸法</th>
+                        <th style={{ width: 130 }}>新寸法</th>
+                        <th style={{ width: 180 }}>備考</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resizePreview.items.map((item) => (
+                        <tr key={`${item.sourcePath}-${item.destinationPath}`}>
+                          <td className="cell-status"><StatusBadge status={item.status} /></td>
+                          <td className="cell-path">{item.sourcePath}</td>
+                          <td className="cell-path">{item.destinationPath}</td>
+                          <td className="cell-size">{formatBytes(item.sourceSize)}</td>
+                          <td className="cell-size">{item.originalWidth}×{item.originalHeight}</td>
+                          <td className="cell-size">{item.status === "ready" ? `${item.newWidth}×${item.newHeight}` : "-"}</td>
+                          <td>{item.reason ?? "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Execute Results */}
+            {resizeExec ? (
+              <div className="result-section">
+                <div className="result-summary">
+                  <span className="result-summary-label">実行結果</span>
+                  <span className="badge badge-success">成功 {resizeExec.succeeded}</span>
+                  {resizeExec.failed > 0 ? <span className="badge badge-error">失敗 {resizeExec.failed}</span> : null}
+                  {resizeExec.skipped > 0 ? <span className="badge badge-skip">スキップ {resizeExec.skipped}</span> : null}
+                  <span className="text-muted" style={{ fontSize: 12 }}>出力先: {resizeExec.outputDir}</span>
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+
         {/* ===== Flatten Tab ===== */}
         {tab === "flatten" ? (
           <>
@@ -2625,6 +3056,7 @@ export function App() {
                 <li><strong>一括リネーム</strong> — 撮影日時・更新日時・テンプレートでファイル名を一括変更</li>
                 <li><strong>拡張子一括削除</strong> — 指定拡張子のファイルを直接削除・ゴミ箱移動・退避フォルダ移動</li>
                 <li><strong>JPEG一括圧縮</strong> — リサイズ比率・品質指定で一括圧縮、目標サイズ自動計算</li>
+                <li><strong>一括リサイズ</strong> — JPEG・PNG・WebP をpx数指定で長辺/短辺基準にリサイズ</li>
                 <li><strong>EXIF日時補正</strong> — JPEGのEXIF撮影日時をオフセット補正</li>
                 <li><strong>メタデータ削除</strong> — JPEGのEXIFからGPS・カメラ情報などを一括削除</li>
                 <li><strong>フォルダ展開</strong> — フォルダ構造を展開し、すべてのファイルをフラットにコピー</li>

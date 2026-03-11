@@ -295,8 +295,53 @@ export interface MetadataStripExecuteResponse {
   details: MetadataStripExecuteDetail[];
 }
 
+export interface ResizePreviewRequest {
+  inputPaths: string[]
+  includeSubfolders: boolean
+  sizePx: number
+  mode: "long_side" | "short_side"
+  smallImagePolicy: "skip" | "copy" | "upscale"
+  filter: "lanczos3" | "catmull_rom" | "triangle" | "nearest"
+  sharpen: number
+  quality: number
+  preserveExif: boolean
+  outputDir?: string | null
+  conflictPolicy: "overwrite" | "sequence" | "skip"
+}
+
+export interface ResizePreviewItem {
+  sourcePath: string
+  destinationPath: string
+  sourceSize: number
+  originalWidth: number
+  originalHeight: number
+  newWidth: number
+  newHeight: number
+  status: "ready" | "skipped"
+  reason?: string | null
+}
+
+export interface ResizePreviewResponse {
+  items: ResizePreviewItem[]
+  total: number
+  ready: number
+  skipped: number
+}
+
+export interface ResizeCollectInfoResponse {
+  fileCount: number
+  totalSize: number
+}
+
+export interface ResizeExecuteResponse {
+  outputDir: string
+  succeeded: number
+  failed: number
+  skipped: number
+}
+
 export interface OperationProgressEvent {
-  operation: "rename" | "delete" | "flatten" | "compress" | "exifOffset" | "metadataStrip";
+  operation: "rename" | "delete" | "flatten" | "compress" | "exifOffset" | "metadataStrip" | "resize";
   processed: number;
   total: number;
   succeeded: number;

@@ -22,7 +22,11 @@ import type {
   RenameExecuteResponse,
   RenamePreviewRequest,
   RenamePreviewResponse,
-  RenameTemplateTag
+  RenameTemplateTag,
+  ResizeCollectInfoResponse,
+  ResizeExecuteResponse,
+  ResizePreviewRequest,
+  ResizePreviewResponse
 } from "./types";
 
 export async function previewRename(
@@ -116,6 +120,25 @@ export async function executeMetadataStrip(
   payload: MetadataStripPreviewRequest
 ): Promise<MetadataStripExecuteResponse> {
   return invoke<MetadataStripExecuteResponse>("execute_metadata_strip", { request: payload });
+}
+
+export async function resizeCollectInfo(
+  inputPaths: string[],
+  includeSubfolders: boolean
+): Promise<ResizeCollectInfoResponse> {
+  return invoke<ResizeCollectInfoResponse>("resize_collect_info", { inputPaths, includeSubfolders });
+}
+
+export async function previewResize(
+  payload: ResizePreviewRequest
+): Promise<ResizePreviewResponse> {
+  return invoke<ResizePreviewResponse>("preview_resize", { request: payload });
+}
+
+export async function executeResize(
+  payload: ResizePreviewRequest
+): Promise<ResizeExecuteResponse> {
+  return invoke<ResizeExecuteResponse>("execute_resize", { request: payload });
 }
 
 export async function cancelOperation(): Promise<void> {

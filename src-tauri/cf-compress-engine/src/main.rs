@@ -1,7 +1,7 @@
 mod codec;
 mod protocol;
 
-use protocol::{CompressBatchItem, CompressFileStatus, Request, Response};
+use protocol::{CompressBatchItem, CompressFileStatus, Request, ResizeBatchItem, Response};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
@@ -125,6 +125,31 @@ fn handle_request(
                 &id,
                 &items,
                 resize_percent,
+                quality,
+                preserve_exif,
+                stdout,
+                cancel_flag,
+            );
+        }
+        Request::ResizeBatch {
+            id,
+            items,
+            mode,
+            size_px,
+            small_image_policy,
+            filter,
+            sharpen,
+            quality,
+            preserve_exif,
+        } => {
+            handle_resize_batch(
+                &id,
+                &items,
+                &mode,
+                size_px,
+                &small_image_policy,
+                &filter,
+                sharpen,
                 quality,
                 preserve_exif,
                 stdout,
@@ -424,6 +449,119 @@ fn handle_compress_batch(
     send_response(
         stdout_ref,
         &Response::CompressBatchDone {
+            id: id.to_string(),
+            succeeded: succeeded.load(Ordering::Relaxed),
+            failed: failed.load(Ordering::Relaxed),
+            skipped: skipped.load(Ordering::Relaxed),
+        },
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_resize_batch(
+    id: &str,
+    items: &[ResizeBatchItem],
+    mode: &str,
+    size_px: u32,
+    small_image_policy: &str,
+    filter: &str,
+    sharpen: f32,
+    quality: u8,
+    preserve_exif: bool,
+    stdout: &Arc<Mutex<io::Stdout>>,
+    cancel_flag: &Arc<AtomicBool>,
+) {
+    let succeeded = AtomicUsize::new(0);
+    let failed = AtomicUsize::new(0);
+    let skipped = AtomicUsize::new(0);
+
+    let id_owned = id.to_string();
+    let stdout_ref = stdout;
+
+    items.par_iter().for_each(|item| {
+        if item.skip || cancel_flag.load(Ordering::Relaxed) {
+            skipped.fetch_add(1, Ordering::Relaxed);
+            send_response(
+                stdout_ref,
+                &Response::ResizeFileDone {
+                    id: id_owned.clone(),
+                    source: item.source.clone(),
+                    destination: item.destination.clone(),
+                    status: "skipped".to_string(),
+                    output_size: None,
+                    reason: if cancel_flag.load(Ordering::Relaxed) {
+                        Some("キャンセルされました".to_string())
+                    } else {
+                        Some("スキップ".to_string())
+                    },
+                },
+            );
+            return;
+        }
+
+        let source = PathBuf::from(&item.source);
+        let destination = PathBuf::from(&item.destination);
+
+        match codec::resize_one_file(
+            &source,
+            &destination,
+            mode,
+            size_px,
+            small_image_policy,
+            filter,
+            sharpen,
+            quality,
+            preserve_exif,
+        ) {
+            Ok((size, was_skipped)) => {
+                if was_skipped {
+                    skipped.fetch_add(1, Ordering::Relaxed);
+                    send_response(
+                        stdout_ref,
+                        &Response::ResizeFileDone {
+                            id: id_owned.clone(),
+                            source: item.source.clone(),
+                            destination: item.destination.clone(),
+                            status: "skipped".to_string(),
+                            output_size: if size > 0 { Some(size) } else { None },
+                            reason: Some("小さい画像のためスキップまたはコピー".to_string()),
+                        },
+                    );
+                } else {
+                    succeeded.fetch_add(1, Ordering::Relaxed);
+                    send_response(
+                        stdout_ref,
+                        &Response::ResizeFileDone {
+                            id: id_owned.clone(),
+                            source: item.source.clone(),
+                            destination: item.destination.clone(),
+                            status: "succeeded".to_string(),
+                            output_size: Some(size),
+                            reason: None,
+                        },
+                    );
+                }
+            }
+            Err(msg) => {
+                failed.fetch_add(1, Ordering::Relaxed);
+                send_response(
+                    stdout_ref,
+                    &Response::ResizeFileDone {
+                        id: id_owned.clone(),
+                        source: item.source.clone(),
+                        destination: item.destination.clone(),
+                        status: "failed".to_string(),
+                        output_size: None,
+                        reason: Some(msg),
+                    },
+                );
+            }
+        }
+    });
+
+    send_response(
+        stdout_ref,
+        &Response::ResizeBatchDone {
             id: id.to_string(),
             succeeded: succeeded.load(Ordering::Relaxed),
             failed: failed.load(Ordering::Relaxed),

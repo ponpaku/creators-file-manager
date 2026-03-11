@@ -484,6 +484,63 @@ pub struct MetadataStripExecuteResponse {
     pub details: Vec<MetadataStripExecuteDetail>,
 }
 
+// ── Resize ──
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResizePreviewRequest {
+    pub input_paths: Vec<String>,
+    pub include_subfolders: bool,
+    pub size_px: u32,
+    pub mode: String,
+    pub small_image_policy: String,
+    pub filter: String,
+    pub sharpen: f32,
+    pub quality: u8,
+    pub preserve_exif: bool,
+    pub output_dir: Option<String>,
+    pub conflict_policy: CollisionPolicy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResizePreviewItem {
+    pub source_path: String,
+    pub destination_path: String,
+    pub source_size: u64,
+    pub original_width: u32,
+    pub original_height: u32,
+    pub new_width: u32,
+    pub new_height: u32,
+    pub status: PreviewStatus,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResizePreviewResponse {
+    pub items: Vec<ResizePreviewItem>,
+    pub total: usize,
+    pub ready: usize,
+    pub skipped: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResizeCollectInfoResponse {
+    pub file_count: usize,
+    pub total_size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResizeExecuteResponse {
+    pub output_dir: String,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub skipped: usize,
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
