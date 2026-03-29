@@ -1,5 +1,6 @@
 use crate::error::AppError;
 use crate::file_collect::collect_rename_targets;
+use crate::fs_atomic::atomic_copy_replace;
 use crate::fs_atomic::atomic_move_replace;
 use crate::model::{
     CollisionPolicy, ExecuteStatus, OperationProgressEvent, PreviewStatus, RenameExecuteDetail,
@@ -153,6 +154,7 @@ where
     let ffprobe_cache = prefetch_ffprobe_datetimes(request, &mut report_progress)?;
     let plan = build_plan(request, Some(&execution_timestamp), &ffprobe_cache)?;
     let total = plan.len();
+    let copy_output = request.duplicate_output.unwrap_or(false) && request.output_dir.is_some();
     let mut details = Vec::with_capacity(total);
     let mut succeeded = 0usize;
     let mut failed = 0usize;
@@ -160,11 +162,13 @@ where
     let mut processed = 0usize;
     let mut canceled = false;
 
-    // Check if any destination overlaps with a source path. Rename is a
-    // move operation, so parallel execution can destroy a source file
-    // before another worker reads it (e.g. 2.jpg→1.jpg and 3.jpg→2.jpg).
+    // When moving into the output folder, a destination can overlap with a
+    // source path. Parallel execution could then destroy a source file before
+    // another worker reads it (e.g. 2.jpg→1.jpg and 3.jpg→2.jpg).
     // Fall back to sequential execution when this overlap is detected.
-    let needs_sequential = {
+    let needs_sequential = if copy_output {
+        false
+    } else {
         let source_keys: HashSet<String> = plan
             .iter()
             .map(|item| destination_key(&item.source))
@@ -181,7 +185,7 @@ where
             if !canceled && is_cancelled() {
                 canceled = true;
             }
-            let detail = execute_one_rename(item, canceled);
+            let detail = execute_one_rename(item, canceled, copy_output);
             processed += 1;
             match detail.status {
                 ExecuteStatus::Succeeded => succeeded += 1,
@@ -213,7 +217,7 @@ where
                 .into_par_iter()
                 .for_each_with(tx, |sender, item| {
                     let detail =
-                        execute_one_rename(&item, worker_cancel.load(Ordering::SeqCst));
+                        execute_one_rename(&item, worker_cancel.load(Ordering::SeqCst), copy_output);
                     let _ = sender.send(detail);
                 });
         });
@@ -275,7 +279,7 @@ where
     })
 }
 
-fn execute_one_rename(item: &PlannedRename, canceled: bool) -> RenameExecuteDetail {
+fn execute_one_rename(item: &PlannedRename, canceled: bool, copy_output: bool) -> RenameExecuteDetail {
     if canceled || matches!(item.status, PreviewStatus::Skipped) {
         return RenameExecuteDetail {
             source_path: item.source.to_string_lossy().to_string(),
@@ -321,7 +325,14 @@ fn execute_one_rename(item: &PlannedRename, canceled: bool) -> RenameExecuteDeta
         }
     }
 
-    match atomic_move_replace(&item.source, &destination) {
+    let result = if copy_output {
+        atomic_copy_replace(&item.source, &destination)
+            .map(|()| Some("元ファイルを残して複製しました".to_string()))
+    } else {
+        atomic_move_replace(&item.source, &destination)
+    };
+
+    match result {
         Ok(note) => RenameExecuteDetail {
             source_path: item.source.to_string_lossy().to_string(),
             destination_path: Some(destination.to_string_lossy().to_string()),

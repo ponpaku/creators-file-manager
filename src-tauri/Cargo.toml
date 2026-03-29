@@ -1,6 +1,6 @@
 [package]
 name = "file-manager"
-version = "0.1.0"
+version = "0.2.0"
 description = "Creator's file operations app"
 authors = ["ponpaku"]
 edition = "2021"

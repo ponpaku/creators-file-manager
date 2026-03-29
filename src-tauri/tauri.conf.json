@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Creators File Manager",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.local.creators-file-manager",
   "build": {
     "beforeDevCommand": "npm run build-worker && npm run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:1422",
     "beforeBuildCommand": "npm run build-worker-release && npm run build",
     "frontendDist": "../dist"
   },

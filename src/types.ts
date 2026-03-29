@@ -6,6 +6,7 @@ export interface RenamePreviewRequest {
   template: string;
   source: RenameSource;
   outputDir?: string | null;
+  duplicateOutput?: boolean | null;
   conflictPolicy?: "overwrite" | "sequence" | "skip" | null;
   useFfprobe?: boolean | null;
 }

@@ -41,6 +41,7 @@ pub struct RenamePreviewRequest {
     pub template: String,
     pub source: RenameSource,
     pub output_dir: Option<String>,
+    pub duplicate_output: Option<bool>,
     pub conflict_policy: Option<CollisionPolicy>,
     pub use_ffprobe: Option<bool>,
 }

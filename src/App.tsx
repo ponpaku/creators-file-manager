@@ -426,6 +426,7 @@ export function App() {
   const [renameTemplate, setRenameTemplate] = useState(DEFAULT_SETTINGS.renameTemplates[0].template);
   const [renameSource, setRenameSource] = useState<RenameSource>("captureThenModified");
   const [renameOutputDir, setRenameOutputDir] = useState("");
+  const [renameDuplicateOutput, setRenameDuplicateOutput] = useState(false);
   const [renameConflictPolicy, setRenameConflictPolicy] = useState<"overwrite" | "sequence" | "skip">("sequence");
   const [ffprobeAvailable, setFfprobeAvailable] = useState(false);
   const [useFfprobe, setUseFfprobe] = useState(false);
@@ -527,6 +528,7 @@ export function App() {
   const exifOffsetFiles = useMemo(() => parsePaths(exifOffsetPaths), [exifOffsetPaths]);
   const metadataStripFiles = useMemo(() => parsePaths(metadataStripPaths), [metadataStripPaths]);
   const resizeFiles = useMemo(() => parsePaths(resizePaths), [resizePaths]);
+  const renameOutputDirSpecified = renameOutputDir.trim().length > 0;
   const effectiveResizePx = useMemo(() => {
     if (resizeSizePx === "custom") {
       const parsed = Number.parseInt(resizeCustomPx.trim(), 10);
@@ -1104,6 +1106,7 @@ export function App() {
             template: renameTemplate,
             source: renameSource,
             outputDir: renameOutputDir.trim() || null,
+            duplicateOutput: renameOutputDirSpecified && renameDuplicateOutput,
             conflictPolicy: renameConflictPolicy,
             useFfprobe
           })
@@ -1343,6 +1346,7 @@ export function App() {
                     template: renameTemplate,
                     source: renameSource,
                     outputDir: renameOutputDir.trim() || null,
+                    duplicateOutput: renameOutputDirSpecified && renameDuplicateOutput,
                     conflictPolicy: renameConflictPolicy,
                     useFfprobe
                   });
@@ -1443,6 +1447,15 @@ export function App() {
                   <label className="form-label">出力先フォルダ</label>
                   <input value={renameOutputDir} onChange={(event) => setRenameOutputDir(event.target.value)} placeholder="空欄で入力元フォルダに上書き" />
                 </div>
+                {renameOutputDirSpecified ? (
+                  <div className="form-group">
+                    <label className="checkbox-row">
+                      <input type="checkbox" checked={renameDuplicateOutput} onChange={(event) => setRenameDuplicateOutput(event.target.checked)} />
+                      元ファイルを残して複製する
+                    </label>
+                    <span className="form-hint">チェックを外すと、出力先へ移動します。</span>
+                  </div>
+                ) : null}
                 <div className="form-group">
                   <label className="checkbox-row">
                     <input type="checkbox" checked={useFfprobe} disabled={!ffprobeAvailable} onChange={(event) => setUseFfprobe(event.target.checked)} />
@@ -1472,6 +1485,7 @@ export function App() {
                         template: renameTemplate,
                         source: renameSource,
                         outputDir: renameOutputDir.trim() || null,
+                        duplicateOutput: renameOutputDirSpecified && renameDuplicateOutput,
                         conflictPolicy: renameConflictPolicy,
                         useFfprobe
                       });
